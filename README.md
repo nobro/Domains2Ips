@@ -13,14 +13,21 @@ The file must contain a list with only one domain/subdomain per line.
 Example list:
 
 Valid:
+
 ...
+
 example.org
+
 example.com
+
 www.example.com
+
 ...
 
 Invalid:
+
 www.example.com/index.html
+
 
 Only domain validity check is striping whitespace characters.
 
