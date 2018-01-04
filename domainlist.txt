@@ -1,0 +1,9 @@
+yourname.xyz
+ yourname.xyz
+www.yourname.xyz
+www.yourname.xyz/index.html
+http://yourname.xyz
+http://yourname.xyz/
+https://yourname.xyz
+https://yourname.xyz/index.html
+someinvaliddomain12312313.com
