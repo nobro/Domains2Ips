@@ -1,1 +1,2 @@
 pyperclip==1.6.0
+tldextract==2.2.0
