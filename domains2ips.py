@@ -5,31 +5,67 @@
 
 Requires pyperclip to copy the json result to the clipboard:
 pip3 install pyperclip
+Requires tldextract to validate domains/subdomains:
+pip3 install tldextract
 
 The file must contain a list with only one domain/subdomain per line.
 Example list:
 Valid:
-example.org
-example.com
-www.example.com
-
-Invalid:
-www.example.com/index.html
+yourname.xyz
+ yourname.xyz
+www.yourname.xyz
+www.yourname.xyz/index.html
+http://yourname.xyz
+http://yourname.xyz/
+https://yourname.xyz
+https://yourname.xyz/index.html
+someinvaliddomain12312313.com
 
 Usage:
   - run this module without arguments --> get help message
   - run with '--file' or '-f' --> Select the file to be parsed - Must be set!
-  - run with '--json' or '-j' --> Output results as json also
+  - run with '--jsondomain' or '-jd' --> Output results as json sorted by domain
+  - run with '--jsonip' or '-ji' --> Output results as json sorted by ip
   - run with '--clipboard' or '-c' --> will copy the resulting json to the clipboard for easy paste
   - run with '--help' or '-h' --> shows standard help message
+
+Run:
+./domains2ips.py domainlist.txt -ji -c
 """
 
+import tldextract
+from pathlib import Path
+from collections import OrderedDict
 import pyperclip
 import textwrap
 import argparse
 import socket
 import json
 import sys
+
+
+def sort_by_ip(unsorted):
+    by_ip = {}
+
+    for k, v in unsorted.items():
+        for ip in v:
+            if ip in by_ip and k not in by_ip[ip]:
+                by_ip[ip].append(k)
+            else:
+                by_ip[ip] = [k]
+
+    return OrderedDict(sorted(by_ip.items()))
+
+
+def non_unique_domain(invalidated_domain):
+    """Use tldextract to validate domain and subdomain"""
+    temp_domain = tldextract.extract(invalidated_domain)
+    if temp_domain.subdomain:
+        not_unique_domain = '.'.join(temp_domain)
+    else:
+        not_unique_domain = temp_domain.domain + '.' + temp_domain.suffix
+
+    return not_unique_domain
 
 
 def main():
@@ -49,40 +85,76 @@ def main():
 
                     '''),
         epilog='''Simple script to convert a list of domains to DNS A records (IPv4)''')
-    parser.add_argument('-f', '--file', help='select domain list', required=True)  # required param
-    parser.add_argument('-j', '--json', help='output as json also', action='store_true') # optional param
+    parser.add_argument('file', nargs='?', help='select domain list')  # required param
+    parser.add_argument('-jd', '--jsondomain', help='output as json also - sort by domain', action='store_true')
+    parser.add_argument('-ji', '--jsonip', help='output as json also - sort by ip', action='store_true')
     parser.add_argument('-c', '--clipboard', action='store_true',
                         help='copy json result to clipboard for easy paste')  # optional param
     args = parser.parse_args()
 
-    domainips = {}
+    sorted_by_domain = {}
 
-    if args.file:
-        print('**Starting script**')
+    if args.file and Path(args.file).is_file():
+        print('** Starting script **')
         print('Input file is -->', args.file)
         with open(args.file, "r") as f:
             content = f.readlines()
-            # strip whitespace characters like `\n` at the end of each line just in case
-            content = {x.strip() for x in content}
-            for domain in content:
+            for invalidated_domain in content:
                 try:
+                    # extract domain / subdomain
+                    domain = non_unique_domain(invalidated_domain)
+                    # get ips for domains
                     ips = socket.gethostbyname_ex(domain)[2]
-                    print('** ' + domain + ' **' + '\t-->\t' + ', '.join(ips))
-                    domainips[domain] = ips
+                    print('** ' + domain + ' **' + ' -->\t' + ', '.join(ips))
+                    sorted_by_domain[domain] = ips
                 except Exception as e:
-                    print('** ' + domain + ' **' + '\t-->\t' + str(e))
+                    print('** ' + invalidated_domain + ' **' + ' -->\t' + str(e))
 
-        if args.json:
-            print("\n ** Domain with IPv4 ips as JSON ** \n")
-            print(json.dumps(domainips, sort_keys=True, indent=4) + "\n")
+        if args.jsondomain and not args.jsonip:
+            print("\n ** Sorted Domains by IPv4 ips as JSON ** \n")
+            print(json.dumps(sorted_by_domain, sort_keys=True, indent=4))
+
+        if args.jsonip and not args.jsondomain:
+            print("\n ** Sorted IPv4 ips by domains as JSON ** \n")
+            print(json.dumps(sort_by_ip(sorted_by_domain), sort_keys=True, indent=4))
+
+        if args.jsonip and args.jsondomain:
+            print("\n ** Sorted IPv4 ips with domains as JSON ** \n")
+            print('{"sorted by ip":' + '\n' + json.dumps(sort_by_ip(sorted_by_domain), sort_keys=True, indent=4)
+                  + ',"sorted by domain":' + '\n' + json.dumps(sorted_by_domain, sort_keys=True, indent=4) + '\n' + '}')
 
         if args.clipboard:
-            try:
-                pyperclip.copy(json.dumps(domainips))
-            except Exception as e:
-                print(str(e))
-                print('Probably need to install pyperclip')
-                print('pip3 install pyperclip')
+            if not args.jsondomain and not args.jsonip:
+                try:
+                    print('==================================')
+                    print('WARNING:')
+                    print('-c only works if -ji or -jd is set!')
+                except Exception as e:
+                    print(str(e))
+                    print('Probably need to install pyperclip')
+                    print('pip3 install pyperclip')
+            elif args.jsonip and not args.jsondomain:
+                try:
+                    pyperclip.copy(json.dumps(sort_by_ip(sorted_by_domain)))
+                except Exception as e:
+                    print(str(e))
+                    print('Probably need to install pyperclip')
+                    print('pip3 install pyperclip')
+            elif args.jsondomain and not args.jsonip:
+                try:
+                    pyperclip.copy(json.dumps(sorted_by_domain))
+                except Exception as e:
+                    print(str(e))
+                    print('Probably need to install pyperclip')
+                    print('pip3 install pyperclip')
+            elif args.jsondomain and args.jsonip:
+                try:
+                    pyperclip.copy('{"sorted by ip":' + '\n' + json.dumps(sort_by_ip(sorted_by_domain))
+                                   + ',"sorted by domain":' + '\n' + json.dumps(sorted_by_domain) + '\n' + '}')
+                except Exception as e:
+                    print(str(e))
+                    print('Probably need to install pyperclip')
+                    print('pip3 install pyperclip')
     else:
         parser.print_help()
         sys.exit(1)
