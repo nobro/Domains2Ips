@@ -1,6 +1,6 @@
-# Domains to IPv4 IPs
+# Domains to IPv4 and IPV6 IPs
 
-Simple script that converts a list of domains/subdomains to DNS A Records (IPV4).
+There are 2 simple scripts that convert a list of domains/subdomains to DNS A Records (IPV4) and to DNS AAAA Records (IPV6).
 
 Uses socket to get IPs so it is subject to localy configured resolver.
 
@@ -43,7 +43,7 @@ someinvaliddomain12312313.com
   - run with '--help' or '-h' --> shows standard help message
 
 ### Run:
-./domains2ips.py domainlist.txt
+./domains2ipv4s.py domainlist.txt
 ```
 ** Starting script **
 Input file is --> domainlist.txt
@@ -57,7 +57,7 @@ Input file is --> domainlist.txt
 ** yourname.xyz ** -->	104.24.122.106, 104.24.123.106
 ** someinvaliddomain12312313.com ** -->	[Errno 8] nodename nor servname provided, or not known
 ```
-./domains2ips.py domainlist.txt -ji
+./domains2ipv4s.py domainlist.txt -ji
 ```
 ** Starting script **
 Input file is --> domainlist.txt
@@ -85,7 +85,7 @@ Input file is --> domainlist.txt
 }
 ```
 
-./domains2ips.py domainlist.txt -jd
+./domains2ipv4s.py domainlist.txt -jd
 ```
 ** Starting script **
 Input file is --> domainlist.txt
@@ -113,7 +113,7 @@ Input file is --> domainlist.txt
 }
 ```
 
-./domains2ips.py domainlist.txt -ji -jd will output both json lists
+./domains2ipv4s.py domainlist.txt -ji -jd will output both json lists
 ```
 ** Starting script **
 Input file is --> domainlist.txt
@@ -152,3 +152,5 @@ Input file is --> domainlist.txt
 }
 }
 ```
+
+The domains2ipv6s.py script works the same just outputs only ipv6 addresses.
