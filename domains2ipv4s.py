@@ -70,7 +70,7 @@ def non_unique_domain(invalidated_domain):
 
 def main():
     parser = argparse.ArgumentParser(
-        prog='domains2ips.py',
+        prog='domains2ipv4s.py',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=textwrap.dedent('''\
 
