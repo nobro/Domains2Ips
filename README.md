@@ -2,9 +2,9 @@
 
 There are 3 simple scripts that convert a list of domains/subdomains to DNS A Records (IPV4) and to DNS AAAA Records (IPV6):
 
-- domains2ips.py - converts domains/subdomains to IPV4 and IPV6 addresses (A and AAAA DNS Records)
-- domains2ipv4s.py - converts domains/subdomains to IPV4 addresses (A DNS Records)
-- domains2ipv6s.py - converts domains/subdomains to IPV6 addresses (AAAA DNS Records)
+- **domains2ips.py** - converts domains/subdomains to IPV4 and IPV6 addresses (A and AAAA DNS Records)
+- **domains2ipv4s.py** - converts domains/subdomains to IPV4 addresses (A DNS Records)
+- **domains2ipv6s.py** - converts domains/subdomains to IPV6 addresses (AAAA DNS Records)
 
 Uses socket to get IPs so it is subject to localy configured resolver.
 
