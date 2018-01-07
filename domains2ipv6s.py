@@ -26,7 +26,7 @@ someinvaliddomain12312313.com
 
 Usage:
   - run this module without arguments --> get help message
-  - run with 'file name' --> Select the file to be parsed - Must be set!
+  - run with '--file' or '-f' --> Select the file to be parsed - Must be set!
   - run with '--jsondomain' or '-jd' --> Output results as json sorted by domain
   - run with '--jsonip' or '-ji' --> Output results as json sorted by ip
   - run with '--clipboard' or '-c' --> will copy the resulting json to the clipboard for easy paste
@@ -90,18 +90,17 @@ def main():
     parser = argparse.ArgumentParser(
         prog='domains2ipv6s.py',
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        # ANSI Shadow
         description=textwrap.dedent('''\
 
-      dP                              oo                   d8888b. oo                   
-      88                                                       `88                      
-.d888b88 .d8888b. 88d8b.d8b. .d8888b. dP 88d888b. .d8888b. .aaadP' dP 88d888b. .d8888b. 
-88'  `88 88'  `88 88'`88'`88 88'  `88 88 88'  `88 Y8ooooo. 88'     88 88'  `88 Y8ooooo. 
-88.  .88 88.  .88 88  88  88 88.  .88 88 88    88       88 88.     88 88.  .88       88 
-`88888P8 `88888P' dP  dP  dP `88888P8 dP dP    dP `88888P' Y88888P dP 88Y888P' `88888P' 
-                                                                      88                
-                                                                      dP                
+██████╗  ██████╗ ███╗   ███╗ █████╗ ██╗███╗   ██╗███████╗    ██████╗     ██╗██████╗ ███████╗
+██╔══██╗██╔═══██╗████╗ ████║██╔══██╗██║████╗  ██║██╔════╝    ╚════██╗    ██║██╔══██╗██╔════╝
+██║  ██║██║   ██║██╔████╔██║███████║██║██╔██╗ ██║███████╗     █████╔╝    ██║██████╔╝███████╗
+██║  ██║██║   ██║██║╚██╔╝██║██╔══██║██║██║╚██╗██║╚════██║    ██╔═══╝     ██║██╔═══╝ ╚════██║
+██████╔╝╚██████╔╝██║ ╚═╝ ██║██║  ██║██║██║ ╚████║███████║    ███████╗    ██║██║     ███████║
+╚═════╝  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚══════╝    ╚══════╝    ╚═╝╚═╝     ╚══════╝
 
-                    '''),
+'''),
         epilog='''Simple script to convert a list of domains to DNS AAAA records (IPv6)''')
     parser.add_argument('file', nargs='?', help='select domain list')  # required param
     parser.add_argument('-jd', '--jsondomain', help='output as json also - sort by domain', action='store_true')
@@ -133,11 +132,14 @@ def main():
                             else:
                                 sorted_by_domain[domain] = [ipv6[4][0]]
                     except Exception as e:
-                        print('** ' + invalidated_domain + ' **' + ' -->\t' + str(e))
+                        print('\u001b[33m' + 'IPV6: ' + '\u001b[0m' + invalidated_domain + '\033[31m' +
+                              ' Error: ' + '\u001b[0m' + str(e))
 
             print('===========># Stats: #<===========')
-            print('The input file contained ' + str(len(content)) + ' lines and ' + str(len(sorted_by_domain)) +
-                  ' domains are unique and valid. Difference: ' + str(int(len(content)) - int(len(sorted_by_domain))))
+            print('The input file contained ' + str(len(content)) + ' lines and ' + '\u001b[32m' +
+                  str(len(
+                      sorted_by_domain)) + '\u001b[0m' + ' domains are unique and valid. Difference: ' + '\033[31m' +
+                  str(int(len(content)) - int(len(sorted_by_domain))) + '\u001b[0m')
             print('==================================')
 
         if args.jsondomain and not args.jsonip:
