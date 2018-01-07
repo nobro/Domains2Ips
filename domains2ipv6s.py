@@ -2,10 +2,13 @@
 # -*- coding: utf-8 -*-
 
 """Simple script that converts a list of domains/subdomains to DNS AAAA Records (IPV6).
+Does optional JSON output also.
 
 Requires pyperclip to copy the json result to the clipboard:
 pip3 install pyperclip
-Requires tldextract to validate domains/subdomains:
+Requires validators to validate domain/subdomains:
+pip3 install validators
+Requires tldextract to extract domains/subdomains:
 pip3 install tldextract
 
 The file must contain a list with only one domain/subdomain per line.
@@ -33,6 +36,7 @@ Run:
 ./domains2ipv6s.py domainlist.txt -ji -c
 """
 
+import validators
 import tldextract
 from pathlib import Path
 from collections import OrderedDict
@@ -45,6 +49,7 @@ import sys
 
 
 def sort_by_ip(unsorted):
+    """Sorts output by IP instead of Domain/Subdomain name"""
     by_ip = {}
 
     for k, v in unsorted.items():
@@ -58,14 +63,27 @@ def sort_by_ip(unsorted):
 
 
 def non_unique_domain(invalidated_domain):
-    """Use tldextract to validate domain and subdomain"""
-    temp_domain = tldextract.extract(invalidated_domain)
-    if temp_domain.subdomain:
-        not_unique_domain = '.'.join(temp_domain)
+    """Uses validators to validate domain/subdomain or URL and tldextract to extract domain/subdomain"""
+    # strip whitespaces from beginning or end of string
+    invalidated_domain = invalidated_domain.strip()
+    # valid domain / subdomain
+    if validators.domain(invalidated_domain):
+        not_unique_domain = invalidated_domain
+        return not_unique_domain
+    # valid url
+    elif validators.url(invalidated_domain, public=True):
+        temp_domain = tldextract.extract(invalidated_domain)
+        if temp_domain.subdomain:
+            not_unique_domain = '.'.join(temp_domain)
+        else:
+            not_unique_domain = temp_domain.domain + '.' + temp_domain.suffix
+        # second validators.domain() check
+        if validators.domain(not_unique_domain):
+            return not_unique_domain
+        else:
+            return False
     else:
-        not_unique_domain = temp_domain.domain + '.' + temp_domain.suffix
-
-    return not_unique_domain
+        return False
 
 
 def main():
@@ -95,25 +113,32 @@ def main():
     sorted_by_domain = {}
 
     if args.file and Path(args.file).is_file():
-        print('** Starting script **')
+        print('======># Starting script #<=======')
         print('Input file is -->', args.file)
+        print('==================================')
         with open(args.file, "r") as f:
             content = f.readlines()
             for invalidated_domain in content:
-                try:
-                    # extract domain / subdomain
-                    domain = non_unique_domain(invalidated_domain)
-                    # get ipv6 ips for domains
-                    ipv6s = socket.getaddrinfo(domain, None, socket.AF_INET6, socket.SOCK_DGRAM, socket.IPPROTO_IP,
-                                               socket.AI_CANONNAME)
-                    for ipv6 in ipv6s:
-                        print('** ' + domain + ' **' + ' -->\t' + str(ipv6[4][0]))
-                        if domain in sorted_by_domain and ipv6[4][0] not in sorted_by_domain[domain]:
-                            sorted_by_domain[domain].append(ipv6[4][0])
-                        else:
-                            sorted_by_domain[domain] = [ipv6[4][0]]
-                except Exception as e:
-                    print('** ' + invalidated_domain + ' **' + ' -->\t' + str(e))
+                # extract domain / subdomain
+                domain = non_unique_domain(invalidated_domain)
+                if domain:
+                    try:
+                        # get ipv6 ips for domains
+                        ipv6s = socket.getaddrinfo(domain, None, socket.AF_INET6, socket.SOCK_DGRAM, socket.IPPROTO_IP,
+                                                   socket.AI_CANONNAME)
+                        for ipv6 in ipv6s:
+                            print('** ' + domain + ' **' + ' -->\t' + str(ipv6[4][0]))
+                            if domain in sorted_by_domain and ipv6[4][0] not in sorted_by_domain[domain]:
+                                sorted_by_domain[domain].append(ipv6[4][0])
+                            else:
+                                sorted_by_domain[domain] = [ipv6[4][0]]
+                    except Exception as e:
+                        print('** ' + invalidated_domain + ' **' + ' -->\t' + str(e))
+
+            print('===========># Stats: #<===========')
+            print('The input file contained ' + str(len(content)) + ' lines and ' + str(len(sorted_by_domain)) +
+                  ' domains are unique and valid. Difference: ' + str(int(len(content)) - int(len(sorted_by_domain))))
+            print('==================================')
 
         if args.jsondomain and not args.jsonip:
             print("\n ** Sorted Domains by IPv6 ips as JSON ** \n")
@@ -163,6 +188,7 @@ def main():
     else:
         parser.print_help()
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
