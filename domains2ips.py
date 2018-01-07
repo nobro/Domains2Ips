@@ -26,10 +26,10 @@ someinvaliddomain12312313.com
 
 Usage:
   - run this module without arguments --> get help message
-  - run with 'file name' --> Select the file to be parsed - Must be set!
+  - run with '--file' or '-f' --> Select the file to be parsed - Must be set!
   - run with '--jsondomain' or '-jd' --> Outputs results as json sorted by domain
   - run with '--jsonip' or '-ji' --> Outputs results as json sorted by ip
-  - run with '--version6' or '-v6' or '-v' --> Outputs IPV6 ips too, by default only IPV4 ips are outputted
+  - run with '--version6' or '-v6' --> Outputs IPV6 ips too, by default only IPV4 ips are outputted
   - run with '--clipboard' or '-c' --> will copy the resulting json to the clipboard for easy paste
   - run with '--help' or '-h' --> shows standard help message
 
@@ -91,19 +91,18 @@ def main():
     parser = argparse.ArgumentParser(
         prog='domains2ips.py',
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        # ANSI Shadow
         description=textwrap.dedent('''\
 
-      dP                              oo                   d8888b. oo                   
-      88                                                       `88                      
-.d888b88 .d8888b. 88d8b.d8b. .d8888b. dP 88d888b. .d8888b. .aaadP' dP 88d888b. .d8888b. 
-88'  `88 88'  `88 88'`88'`88 88'  `88 88 88'  `88 Y8ooooo. 88'     88 88'  `88 Y8ooooo. 
-88.  .88 88.  .88 88  88  88 88.  .88 88 88    88       88 88.     88 88.  .88       88 
-`88888P8 `88888P' dP  dP  dP `88888P8 dP dP    dP `88888P' Y88888P dP 88Y888P' `88888P' 
-                                                                      88                
-                                                                      dP                
+██████╗  ██████╗ ███╗   ███╗ █████╗ ██╗███╗   ██╗███████╗    ██████╗     ██╗██████╗ ███████╗
+██╔══██╗██╔═══██╗████╗ ████║██╔══██╗██║████╗  ██║██╔════╝    ╚════██╗    ██║██╔══██╗██╔════╝
+██║  ██║██║   ██║██╔████╔██║███████║██║██╔██╗ ██║███████╗     █████╔╝    ██║██████╔╝███████╗
+██║  ██║██║   ██║██║╚██╔╝██║██╔══██║██║██║╚██╗██║╚════██║    ██╔═══╝     ██║██╔═══╝ ╚════██║
+██████╔╝╚██████╔╝██║ ╚═╝ ██║██║  ██║██║██║ ╚████║███████║    ███████╗    ██║██║     ███████║
+╚═════╝  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚══════╝    ╚══════╝    ╚═╝╚═╝     ╚══════╝
 
-                    '''),
-        epilog='''Simple script to convert a list of domains to DNS A records (IPv4)''')
+'''),
+        epilog='''Simple script that converts a list of domains/subdomains to IPV4 and IPV6 ips''')
     parser.add_argument('file', nargs='?', help='select domain list')  # required param
     parser.add_argument('-jd', '--jsondomain', help='output as json also - sort by domain', action='store_true')
     parser.add_argument('-ji', '--jsonip', help='output as json also - sort by ip', action='store_true')
@@ -130,7 +129,8 @@ def main():
                         print('* ' + domain + ' *' + ' -->\t' + ', '.join(ipv4s))
                         sorted_by_domain[domain] = ipv4s
                     except Exception as e:
-                        print('IPV4: ' + invalidated_domain + ' Error: ' + str(e))
+                        print('\u001b[33m' + 'IPV4: ' + '\u001b[0m' + invalidated_domain + '\033[31m' + ' Error: ' +
+                              '\u001b[0m' + str(e))
                     if args.version6:
                         try:
                             ipv6s = socket.getaddrinfo(domain, None, socket.AF_INET6, socket.SOCK_DGRAM,
@@ -142,11 +142,13 @@ def main():
                                 else:
                                     sorted_by_domain[domain] = [ipv6[4][0]]
                         except Exception as e:
-                            print('IPV6: ' + invalidated_domain + ' Error: ' + str(e))
+                            print('\u001b[33m' + 'IPV6: ' + '\u001b[0m' + invalidated_domain + '\033[31m' +
+                                  ' Error: ' + '\u001b[0m' + str(e))
 
         print('===========># Stats: #<===========')
-        print('The input file contained ' + str(len(content)) + ' lines and ' + str(len(sorted_by_domain)) +
-              ' domains are unique and valid. Difference: ' + str(int(len(content)) - int(len(sorted_by_domain))))
+        print('The input file contained ' + str(len(content)) + ' lines and ' + '\u001b[32m' +
+              str(len(sorted_by_domain)) + '\u001b[0m' + ' domains are unique and valid. Difference: ' + '\033[31m' +
+              str(int(len(content)) - int(len(sorted_by_domain))) + '\u001b[0m')
         print('==================================')
 
         if args.jsondomain and not args.jsonip:
