@@ -2,10 +2,13 @@
 # -*- coding: utf-8 -*-
 
 """Simple script that converts a list of domains/subdomains to DNS A Records (IPV4).
+Does optional JSON output also.
 
 Requires pyperclip to copy the json result to the clipboard:
 pip3 install pyperclip
-Requires tldextract to validate domains/subdomains:
+Requires validators to validate domain/subdomains:
+pip3 install validators
+Requires tldextract to extract domains/subdomains:
 pip3 install tldextract
 
 The file must contain a list with only one domain/subdomain per line.
@@ -34,6 +37,7 @@ Run:
 """
 
 import tldextract
+import validators
 from pathlib import Path
 from collections import OrderedDict
 import pyperclip
@@ -45,6 +49,7 @@ import sys
 
 
 def sort_by_ip(unsorted):
+    """Sorts output by IP instead of Domain/Subdomain name"""
     by_ip = {}
 
     for k, v in unsorted.items():
@@ -58,14 +63,27 @@ def sort_by_ip(unsorted):
 
 
 def non_unique_domain(invalidated_domain):
-    """Use tldextract to validate domain and subdomain"""
-    temp_domain = tldextract.extract(invalidated_domain)
-    if temp_domain.subdomain:
-        not_unique_domain = '.'.join(temp_domain)
+    """Uses validators to validate domain/subdomain or URL and tldextract to extract domain/subdomain"""
+    # strip whitespaces from beginning or end of string
+    invalidated_domain = invalidated_domain.strip()
+    # valid domain / subdomain
+    if validators.domain(invalidated_domain):
+        not_unique_domain = invalidated_domain
+        return not_unique_domain
+    # valid url
+    elif validators.url(invalidated_domain, public=True):
+        temp_domain = tldextract.extract(invalidated_domain)
+        if temp_domain.subdomain:
+            not_unique_domain = '.'.join(temp_domain)
+        else:
+            not_unique_domain = temp_domain.domain + '.' + temp_domain.suffix
+        # second validators.domain() check
+        if validators.domain(not_unique_domain):
+            return not_unique_domain
+        else:
+            return False
     else:
-        not_unique_domain = temp_domain.domain + '.' + temp_domain.suffix
-
-    return not_unique_domain
+        return False
 
 
 def main():
@@ -95,20 +113,26 @@ def main():
     sorted_by_domain = {}
 
     if args.file and Path(args.file).is_file():
-        print('** Starting script **')
+        print('======># Starting script #<=======')
         print('Input file is -->', args.file)
+        print('==================================')
         with open(args.file, "r") as f:
             content = f.readlines()
             for invalidated_domain in content:
-                try:
-                    # extract domain / subdomain
-                    domain = non_unique_domain(invalidated_domain)
-                    # get ips for domains
-                    ips = socket.gethostbyname_ex(domain)[2]
-                    print('** ' + domain + ' **' + ' -->\t' + ', '.join(ips))
-                    sorted_by_domain[domain] = ips
-                except Exception as e:
-                    print('** ' + invalidated_domain + ' **' + ' -->\t' + str(e))
+                domain = non_unique_domain(invalidated_domain)
+                if domain:
+                    try:
+                        # get ips ips for domains
+                        ipv4s = socket.gethostbyname_ex(domain)[2]
+                        print('* ' + domain + ' *' + ' -->\t' + ', '.join(ipv4s))
+                        sorted_by_domain[domain] = ipv4s
+                    except Exception as e:
+                        print('IPV4: ' + invalidated_domain + ' Error: ' + str(e))
+
+        print('===========># Stats: #<===========')
+        print('The input file contained ' + str(len(content)) + ' lines and ' + str(len(sorted_by_domain)) +
+              ' domains are unique and valid. Difference: ' + str(int(len(content)) - int(len(sorted_by_domain))))
+        print('==================================')
 
         if args.jsondomain and not args.jsonip:
             print("\n ** Sorted Domains by IPv4 ips as JSON ** \n")
