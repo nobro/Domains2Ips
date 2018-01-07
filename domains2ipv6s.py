@@ -26,7 +26,7 @@ someinvaliddomain12312313.com
 
 Usage:
   - run this module without arguments --> get help message
-  - run with '--file' or '-f' --> Select the file to be parsed - Must be set!
+  - run with 'file name' --> Select the file to be parsed - Must be set!
   - run with '--jsondomain' or '-jd' --> Output results as json sorted by domain
   - run with '--jsonip' or '-ji' --> Output results as json sorted by ip
   - run with '--clipboard' or '-c' --> will copy the resulting json to the clipboard for easy paste
