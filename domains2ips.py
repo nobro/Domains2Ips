@@ -26,10 +26,10 @@ someinvaliddomain12312313.com
 
 Usage:
   - run this module without arguments --> get help message
-  - run with '--file' or '-f' --> Select the file to be parsed - Must be set!
+  - run with 'file name' --> Select the file to be parsed - Must be set!
   - run with '--jsondomain' or '-jd' --> Outputs results as json sorted by domain
   - run with '--jsonip' or '-ji' --> Outputs results as json sorted by ip
-  - run with '--version6' or '-v6' --> Outputs IPV6 ips too, by default only IPV4 ips are outputted
+  - run with '--version6' or '-v6' or '-v' --> Outputs IPV6 ips too, by default only IPV4 ips are outputted
   - run with '--clipboard' or '-c' --> will copy the resulting json to the clipboard for easy paste
   - run with '--help' or '-h' --> shows standard help message
 
