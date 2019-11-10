@@ -1,6 +1,7 @@
 # Domains to IPv4 and IPV6 IPs
 
 Simple script that converts a list of domains/subdomains to DNS A Records (IPV4) and DNS AAAA Records (IPV6).
+
 Does optional JSON an HTML output also.
 
 Uses socket to get IPs so it is subject to localy configured resolver.
@@ -199,4 +200,5 @@ The input file contained 9 lines and 2 domains/subdomains are unique. Difference
 }
 ```
 ./d2i.py -jii w domainlist.txt
+
 Outputs results in a html file in the curent_folder/results/
