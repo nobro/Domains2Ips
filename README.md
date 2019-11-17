@@ -36,7 +36,7 @@ Currently, ipinfo.io offers a 50.000 request per month API key from https://ipin
 def ipinfo_get(ip_address):
     """Uses https://github.com/ipinfo/python to get additional information about IP addresses"""
     # get an API token from https://ipinfo.io/
-    **access_token**=""
+    access_token=""
 ```
 
 
