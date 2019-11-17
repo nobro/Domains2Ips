@@ -23,6 +23,10 @@ Requires **json2html** to save output to a html file
 ```
 pip3 install json2html
 ```
+Requires **ipinfo** (https://github.com/ipinfo/python) to get additional IP information
+```
+pip3 install ipinfo
+```
 or install all requirements:
 ```
 pip3 install -r requirements.txt
