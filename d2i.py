@@ -12,6 +12,8 @@ Requires tldextract to extract domains/subdomains:
 pip3 install tldextract
 Requires json2html to save output to a html file
 pip3 install json2html
+Required ipinfo for additional information on IP addreses
+pip3 install ipinfo
 
 The file must contain a list with only one domain/subdomain per line.
 Example list:
@@ -51,11 +53,10 @@ import argparse
 import socket
 import json
 import sys
-import subprocess as sp
-import ast
 from json2html import *
 import os
 from datetime import datetime
+import ipinfo
 
 
 def sort_by_ip(unsorted):
@@ -96,26 +97,19 @@ def non_unique_domain(invalidated_domain):
         return False
 
 
-def ipinfo(ip_address):
-    """Returns information regarding the given IP address (hostname, city, region, country, org).
-    Should use https://github.com/ipinfo/python instead"""
-
-    cmd = 'curl -s ipinfo.io/'
-    cmd += ip_address
-    cmd_obj = sp.Popen(cmd, stdout=sp.PIPE, shell=True)
-    cmd_out = cmd_obj.communicate()[0].strip()
-
-    if cmd_out == 'null':
-        cmd_out = None
-
-    # error handling?    
-
-    dictionary_ipinfo_response = ast.literal_eval(cmd_out.decode('utf-8'))
-
-    additioanal_ipinfo = {key: dictionary_ipinfo_response[key] for key in dictionary_ipinfo_response.keys() \
+def ipinfo_get(ip_address):
+    access_token=""
+    handler = ipinfo.getHandler(access_token)
+    try:
+        details = handler.getDetails(ip_address)
+        dictionary_ipinfo_response = OrderedDict(details.all)
+        additioanal_ipinfo = {key: dictionary_ipinfo_response[key] for key in dictionary_ipinfo_response.keys() \
                                                     & {'hostname', 'city', 'region', 'country', 'org'}}
+    except Exception as e:
+        additioanal_ipinfo = [('Error: ' + str(e))]
 
     return OrderedDict(additioanal_ipinfo)
+
 
 
 def main():
@@ -199,7 +193,7 @@ def main():
             # get ipinfo.io information for IPs and join with domain / subdomain
             ips_domains_info = OrderedDict()
             for k,v in domain_info.items():
-                ips_domains_info[k] = [ipinfo(k), v]
+                ips_domains_info[k] = [ipinfo_get(k), v]
             print(json.dumps(ips_domains_info, sort_keys=True, indent=4))
         if args.jsonip and args.jsondomain:
             print("\n ** Sorted IPs by domains and domains by IPs as JSON ** \n")
