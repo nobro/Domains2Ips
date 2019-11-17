@@ -98,6 +98,8 @@ def non_unique_domain(invalidated_domain):
 
 
 def ipinfo_get(ip_address):
+    """Uses https://github.com/ipinfo/python to get additional information about IP addresess"""
+    # get an API token from https://ipinfo.io/
     access_token=""
     handler = ipinfo.getHandler(access_token)
     try:
