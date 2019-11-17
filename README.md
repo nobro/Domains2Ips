@@ -4,7 +4,7 @@ Simple script that converts a list of domains/subdomains to DNS A Records (IPV4)
 
 Does optional JSON an HTML output also.
 
-Uses socket to get IPs so it is subject to localy configured resolver.
+Uses socket to get IPs so it is subject to locally configured resolver.
 
 ### Install:
 Requires **pyperclip** to copy the json result to the clipboard:
@@ -19,7 +19,7 @@ Requires **validators** to validate domains/subdomains from list:
 ```
 pip3 install validators
 ```
-Requires **json2html** to save output to a html file
+Requires **json2html** to save output to a HTML file
 ```
 pip3 install json2html
 ```
@@ -31,6 +31,14 @@ or install all requirements:
 ```
 pip3 install -r requirements.txt
 ```
+Currently, ipinfo.io offers a 50.000 request per month API key from https://ipinfo.io/ that can be manually set in d2i.py for the "access_token". 
+```
+def ipinfo_get(ip_address):
+    """Uses https://github.com/ipinfo/python to get additional information about IP addresses"""
+    # get an API token from https://ipinfo.io/
+    access_token=""
+```
+
 
 ### Domain list:
 The file must contain a list with only one domain/subdomain per line.
@@ -56,7 +64,7 @@ someinvaliddomain12312313.com
   - run with '--jsonipinfo' or '-jii' --> Outputs results as json sorted by ip with additional information about the IP from ipinfo.io
   - run with '--version6' or '-v6' --> Outputs IPV6 ips too, by default only IPV4 ips are outputted
   - run with '--clipboard' or '-c' --> Will copy the resulting json to the clipboard for easy paste
-  - run with '--web' or '-w' --> Will make a html file with the results from --jsonipinfo. -jii must be used!
+  - run with '--web' or '-w' --> Will make a HTML file with the results from --jsonipinfo. -jii must be used!
   - run with '--help' or '-h' --> shows standard help message
 
 ### Run:
