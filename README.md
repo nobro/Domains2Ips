@@ -211,6 +211,6 @@ The input file contained 9 lines and 2 domains/subdomains are unique. Difference
     ]
 }
 ```
-./d2i.py -jii w domainlist.txt
+./d2i.py -jii -w domainlist.txt
 
 Outputs results in a html file in the curent_folder/results/
