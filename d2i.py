@@ -105,12 +105,12 @@ def ipinfo_get(ip_address):
     try:
         details = handler.getDetails(ip_address)
         dictionary_ipinfo_response = OrderedDict(details.all)
-        additioanal_ipinfo = {key: dictionary_ipinfo_response[key] for key in dictionary_ipinfo_response.keys() \
-                                                    & {'hostname', 'city', 'region', 'country', 'org'}}
+        additional_ipinfo = [(key, dictionary_ipinfo_response[key]) for key in dictionary_ipinfo_response.keys()
+                             if key in {'hostname', 'city', 'region', 'country', 'org'}]
     except Exception as e:
-        additioanal_ipinfo = [('Error: ' + str(e))]
+        additional_ipinfo = [('Error', str(e))]
 
-    return OrderedDict(additioanal_ipinfo)
+    return OrderedDict(additional_ipinfo)
 
 
 
