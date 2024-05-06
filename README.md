@@ -19,9 +19,9 @@ Requires **validators** to validate domains/subdomains from list:
 ```
 pip3 install validators
 ```
-Requires **json2html** to save output to a HTML file
+Requires **pandas** to save output to a HTML file
 ```
-pip3 install json2html
+pip3 install pandas
 ```
 Requires **ipinfo** (https://github.com/ipinfo/python) to get additional IP information
 ```
