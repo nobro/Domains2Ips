@@ -10,8 +10,8 @@ Requires validators to validate domain/subdomains:
 pip3 install validators
 Requires tldextract to extract domains/subdomains:
 pip3 install tldextract
-Requires json2html to save output to a html file
-pip3 install json2html
+Requires pandas to save output to a html file
+pip3 install pandas
 Required ipinfo for additional information on IP addreses
 pip3 install ipinfo
 
@@ -53,7 +53,7 @@ import argparse
 import socket
 import json
 import sys
-from json2html import *
+import pandas as pd
 import os
 from datetime import datetime
 import ipinfo
@@ -194,9 +194,14 @@ def main():
             domain_info = OrderedDict(sort_by_ip(sorted_by_domain))
             # get ipinfo.io information for IPs and join with domain / subdomain
             ips_domains_info = OrderedDict()
-            for k,v in domain_info.items():
-                ips_domains_info[k] = [ipinfo_get(k), v]
-            print(json.dumps(ips_domains_info, sort_keys=True, indent=4))
+            for domain, info in domain_info.items():
+                ip_info = ipinfo_get(domain)
+                ips_domains_info[domain] = {
+                    'IP Information': ip_info,
+                    'FQDN': info
+                }
+            # Print the JSON with sorted keys and formatted output
+            print(json.dumps(ips_domains_info, sort_keys=True, indent=4))    
         if args.jsonip and args.jsondomain:
             print("\n ** Sorted IPs by domains and domains by IPs as JSON ** \n")
             print('{"sorted by ip":' + '\n' + json.dumps(sort_by_ip(sorted_by_domain), sort_keys=True, indent=4)
@@ -244,7 +249,24 @@ def main():
         # display result in a HTML page if -w is used
         if args.web and args.jsonipinfo:
             json_for_web = ips_domains_info
-            html = json2html.convert(json = json_for_web, table_attributes="id=\"info-table\" class=\"table table-striped table-bordered table-hover\"")
+            #make a dataframe from Json, split the last column, concat it back and remove the second column
+            df = pd.DataFrame(json_for_web.items())
+            df.columns = ['IP', 'Info']
+
+            splitInfo = pd.DataFrame(df['Info'].to_list(), columns = ['IP Information', 'FQDN'])
+
+            df = pd.concat([df, splitInfo], axis = 1)
+
+            df = df.drop('Info', axis = 1)
+            
+            #make a dataframe from Json, split the Ip Info column, concat it back and remove the second column
+            splitIPInfo = pd.DataFrame(df['IP Information'].to_list(), columns = ['hostname', 'org', 'city', 'region', 'country'])
+            
+            df = pd.concat([df, splitIPInfo], axis = 1)
+
+            df = df.drop('IP Information', axis = 1)
+
+            html_table = df.to_html(index=False, na_rep='N/A', classes=["table table-hover table-striped"], escape=False)
 
             html_file= (
             '<!doctype html>\n'\
@@ -253,10 +275,10 @@ def main():
             '<!-- Required meta tags -->'\
             '<meta charset="utf-8">'\
             '<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">'\
-            '<!-- Bootstrap CSS -->'\
-            '<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"'\
-            'integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">'\
-            '<title>Domains2Ips</title>'\
+            '<!-- Bootstrap CSS -->\n'\
+            '<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" '\
+            'integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">\n'\
+            '<title>Domains2Ips</title>\n'\
             '<style type="text/css">'\
             'ul {list-style: none;}'
             '</style>'
@@ -272,7 +294,7 @@ def main():
             '<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" '\
             'integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>'\
             '</body>'\
-            '</html>') % html
+            '</html>') % html_table
 
             # check if 'generated_results' folder exists. if not create it
             if not os.path.isdir(os.getcwd()+'/results'):
@@ -286,7 +308,8 @@ def main():
                 my_file.write(html_file)
             print('The HTML file with the results was written at ' +html_file_name)
         else:
-        	print('-w works only if -jii is set')
+            print('-w works only if -jii is set')
+
     else:
         parser.print_help()
         sys.exit(1)
