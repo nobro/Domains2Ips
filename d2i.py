@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """Simple script that converts a list of domains/subdomains to DNS A Records (IPV4) and DNS AAAA Records (IPV6).
-Does optional JSON an HTML output also.
+Does optional JSON and HTML output also.
+Can include output from a nmap XML scan.
 
 Requires pyperclip to copy the json result to the clipboard:
 pip3 install pyperclip
@@ -14,6 +15,8 @@ Requires pandas to save output to a html file
 pip3 install pandas
 Required ipinfo for additional information on IP addreses
 pip3 install ipinfo
+Required python-libnmap for parsing nmap XML output
+pip3 install python-libnmap
 
 The file must contain a list with only one domain/subdomain per line.
 Example list:
@@ -37,6 +40,7 @@ Usage:
   - run with '--version6' or '-v6' --> Outputs IPV6 ips too, by default only IPV4 ips are outputted
   - run with '--clipboard' or '-c' --> Will copy the resulting json to the clipboard for easy paste
   - run with '--web' or '-w' --> Will make a html file with the results from --jsonipinfo. -jii must be used!
+  - run with '--nmap' or '-n' --> Will make a html file with -jii and -w and add ports from parsing a nmap XML scan file
   - run with '--help' or '-h' --> shows standard help message
 
 Run:
@@ -54,6 +58,7 @@ import socket
 import json
 import sys
 import pandas as pd
+from libnmap.parser import NmapParser
 import os
 from datetime import datetime
 import ipinfo
@@ -113,6 +118,30 @@ def ipinfo_get(ip_address):
     return OrderedDict(additional_ipinfo)
 
 
+def validate_file(f):
+    if not os.path.exists(f):
+        # Argparse uses the ArgumentTypeError to give a rejection message like:
+        # error: argument input: x does not exist
+        raise argparse.ArgumentTypeError("{0} does not exist".format(f))
+    return f
+
+
+def parse_nmap_xml(xmlfile):
+    """Parses a nmap XML output file"""       
+    try:
+        f = open(xmlfile)
+        xml_file_content = f.read()
+        f.close()          
+        parsed = NmapParser.parse(xml_file_content)
+        hosts={}
+        for host in parsed.hosts:
+            if host.is_up():
+                host_ports =  host.get_open_ports()
+                hosts[host.address] = host_ports
+        return hosts
+    except Exception as e:
+            hosts = [('Error', str(e))]
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -139,6 +168,8 @@ def main():
                         help='copy json result to clipboard for easy paste')  # optional param
     parser.add_argument('-w', '--web', action='store_true',
                         help='make a html file with the results. -jii must be used!')
+    parser.add_argument('-n', '--nmap', type=validate_file, \
+                        help='input nmap xml file. -jii -w must be used!')
     args = parser.parse_args()
 
     sorted_by_domain = {}
@@ -247,7 +278,7 @@ def main():
                     print('Probably need to install pyperclip')
                     print('pip3 install pyperclip')
         # display result in a HTML page if -w is used
-        if args.web and args.jsonipinfo:
+        if args.web and args.jsonipinfo and not args.nmap:
             json_for_web = ips_domains_info
             #make a dataframe from Json, split the last column, concat it back and remove the second column
             df = pd.DataFrame(json_for_web.items())
@@ -307,8 +338,80 @@ def main():
             with open(html_file_name, 'w') as my_file:
                 my_file.write(html_file)
             print('The HTML file with the results was written at ' +html_file_name)
-        else:
-            print('-w works only if -jii is set')
+
+        # display result in a HTML page if -jii, -w and -n is used
+        if args.web and args.jsonipinfo and args.nmap:
+            json_for_web = ips_domains_info
+            #make a dataframe from Json, split the last column, concat it back and remove the second column
+            df = pd.DataFrame(json_for_web.items())
+            df.columns = ['IP', 'Info']
+
+            splitInfo = pd.DataFrame(df['Info'].to_list(), columns = ['IP Information', 'FQDN'])
+
+            df = pd.concat([df, splitInfo], axis = 1)
+
+            df = df.drop('Info', axis = 1)
+            
+            #make a dataframe from Json, split the Ip Info column, concat it back and remove the second column
+            splitIPInfo = pd.DataFrame(df['IP Information'].to_list(), columns = ['hostname', 'org', 'city', 'region', 'country'])
+            
+            df = pd.concat([df, splitIPInfo], axis = 1)
+
+            df = df.drop('IP Information', axis = 1)
+
+            #make a dataframe from the xml nmap file
+
+            nmap_output = parse_nmap_xml(args.nmap)
+            
+            dfnmap = pd.DataFrame(nmap_output.items())
+
+            dfnmap.columns = ['IP', 'Ports']
+
+            #merge the 2 data frames
+
+            dfmerged = pd.merge(df, dfnmap, how="outer", on=['IP'])
+
+            html_table = dfmerged.to_html(index=False, na_rep='N/A', classes=["table table-hover table-striped"], escape=False)
+
+            html_file= (
+            '<!doctype html>\n'\
+            '<html lang="en">'\
+            '<head>'\
+            '<!-- Required meta tags -->'\
+            '<meta charset="utf-8">'\
+            '<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">'\
+            '<!-- Bootstrap CSS -->\n'\
+            '<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" '\
+            'integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">\n'\
+            '<title>Domains2Ips</title>\n'\
+            '<style type="text/css">'\
+            'ul {list-style: none;}'
+            '</style>'
+            '</head>'\
+            '<body style="list-style-type: none;">' \
+            '%s'
+            '<!-- Optional JavaScript -->'\
+            '<!-- jQuery first, then Popper.js, then Bootstrap JS -->'\
+            '<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" '\
+            'integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>'\
+            '<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" '\
+            'integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>'\
+            '<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" '\
+            'integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>'\
+            '</body>'\
+            '</html>') % html_table
+
+            # check if 'generated_results' folder exists. if not create it
+            if not os.path.isdir(os.getcwd()+'/results'):
+                os.makedirs(os.getcwd()+'/results')
+
+            # create name for the save file
+            html_file_name = os.getcwd()+'/results/'+datetime.now().strftime("%d-%m-%Y_%H-%M-%S")+'.html'
+
+            # write file
+            with open(html_file_name, 'w') as my_file:
+                my_file.write(html_file)
+            print('The HTML file with the results was written at ' +html_file_name)
 
     else:
         parser.print_help()
