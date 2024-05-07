@@ -2,7 +2,7 @@
 
 Simple script that converts a list of domains/subdomains to DNS A Records (IPV4) and DNS AAAA Records (IPV6).
 
-Does optional JSON an HTML output also.
+Does optional JSON and HTML output also.
 
 Uses socket to get IPs so it is subject to locally configured resolver.
 
@@ -22,6 +22,10 @@ pip3 install validators
 Requires **pandas** to save output to a HTML file
 ```
 pip3 install pandas
+```
+Requires **python-libnmap** to parse a nmap xml scan:
+```
+pip3 install python-libnmap
 ```
 Requires **ipinfo** (https://github.com/ipinfo/python) to get additional IP information
 ```
@@ -65,6 +69,7 @@ someinvaliddomain12312313.com
   - run with '--version6' or '-v6' --> Outputs IPV6 ips too, by default only IPV4 ips are outputted
   - run with '--clipboard' or '-c' --> Will copy the resulting json to the clipboard for easy paste
   - run with '--web' or '-w' --> Will make a HTML file with the results from --jsonipinfo. -jii must be used!
+  - run with '--nmap' or '-n' --> Will make a html file with -jii and -w and add ports from parsing a nmap XML scan file
   - run with '--help' or '-h' --> shows standard help message
 
 ### Run:
