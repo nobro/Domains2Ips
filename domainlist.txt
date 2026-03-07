@@ -1,9 +1,20 @@
-yourname.xyz
- yourname.xyz
-www.yourname.xyz
-www.yourname.xyz/index.html
-http://yourname.xyz
-http://yourname.xyz/
-https://yourname.xyz
-https://yourname.xyz/index.html
+# Test input file
+# Domains / subdomains
+example.com
+sub.example.com
+ sub2.example.com
+https://www.github.com/some/path
+
+# Raw IPs
+8.8.8.8
+1.1.1.1
+
+# IPv6
+2606:4700:4700::1111
+
+# Invalid entries (should be skipped)
+not_a_domain
+ftp://
 someinvaliddomain12312313.com
+
+# Blank lines above/below are fine
