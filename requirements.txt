@@ -1,6 +1,4 @@
-ipinfo==5.0.1
-pandas==2.2.2
-pyperclip==1.8.2
-tldextract==5.1.2
-validators==0.28.1
-python-libnmap==0.7.3
+validators
+tldextract
+ipinfo
+requests
