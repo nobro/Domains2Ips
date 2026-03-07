@@ -1,221 +1,200 @@
-# Domains to IPv4 and IPV6 IPs
+# d2i.py — Domain to IP Enrichment Tool
 
-Simple script that converts a list of domains/subdomains to DNS A Records (IPV4) and DNS AAAA Records (IPV6).
+Accepts a mixed input file of domains, subdomains, URLs, and raw IPs. Resolves each to its IP address(es), enriches the results with geolocation and organisation data via [IPinfo.io](https://ipinfo.io) and open port/vulnerability data via [Shodan InternetDB](https://internetdb.shodan.io), then generates a self-contained HTML report.
 
-Does optional JSON and HTML output also.
+## Features
 
-Uses socket to get IPs so it is subject to locally configured resolver.
+- Mixed input: domains, subdomains, full URLs, raw IPv4/IPv6 addresses in one file
+- Comments (`#`) and blank lines are ignored
+- Optional IPv6 resolution (`-v6`)
+- Reverse DNS lookup per IP
+- Enrichment via IPinfo.io (IPinfo Hostname, Org, City, Region, Country) — API key optional; report still generates without one
+- Enrichment via Shodan InternetDB — free, no API key needed (ports, tags, CPEs, CVEs, hostnames)
+- Private, reserved, and IPv6 addresses are automatically skipped for Shodan (not supported by InternetDB)
+- Two-tab HTML report: **By IP** and **By FQDN**
+- Global search, per-column filters, and sortable columns
+- Clickable FQDNs and IPs that cross-link between tabs
+- Per-row severity labels (Critical / Interesting / Reviewed / False Positive) and notes — persisted in browser `localStorage`
+- Progress output goes to `stderr`; the report path is printed to `stdout` for easy piping
+- Fully self-contained output (single `.html` file, no external dependencies)
 
-### Install:
-Requires **pyperclip** to copy the json result to the clipboard:
+---
+
+## Requirements
+
+- Python 3.9+
+- An [IPinfo.io](https://ipinfo.io) API token (free tier available)
+
+Python dependencies:
+
 ```
-pip3 install pyperclip
-```
-Requires **tldextract** to extract domains/subdomains from list:
-```
-pip3 install tldextract
-```
-Requires **validators** to validate domains/subdomains from list:
-```
-pip3 install validators
-```
-Requires **pandas** to save output to a HTML file
-```
-pip3 install pandas
-```
-Requires **python-libnmap** to parse a nmap xml scan:
-```
-pip3 install python-libnmap
-```
-Requires **ipinfo** (https://github.com/ipinfo/python) to get additional IP information
-```
-pip3 install ipinfo
-```
-or install all requirements:
-```
-pip3 install -r requirements.txt
-```
-Currently, ipinfo.io offers a 50.000 request per month API key from https://ipinfo.io/ that can be manually set in d2i.py for the "access_token". 
-```
-def ipinfo_get(ip_address):
-    """Uses https://github.com/ipinfo/python to get additional information about IP addresses"""
-    # get an API token from https://ipinfo.io/
-    access_token=""
+validators
+tldextract
+ipinfo
+requests
 ```
 
+---
 
-### Domain list:
-The file must contain a list with only one domain/subdomain per line.
+## Installation
 
-Valid example list:
-```
-yourname.xyz
- yourname.xyz
-www.yourname.xyz
-www.yourname.xyz/index.html
-http://yourname.xyz
-http://yourname.xyz/
-https://yourname.xyz
-https://yourname.xyz/index.html
-someinvaliddomain12312313.com
+### Option A — Run directly with `uv` (no virtual environment needed)
+
+[`uv`](https://github.com/astral-sh/uv) installs dependencies on the fly. No setup required.
+
+```bash
+uv run --with validators --with tldextract --with ipinfo --with requests d2i.py -f input.txt --ipinfo_token YOUR_TOKEN
 ```
 
-### Usage:
-  - run this module without arguments --> get help message
-  - run with '--file' or '-f' --> Select the file to be parsed - Must be set!
-  - run with '--jsondomain' or '-jd' --> Outputs results as json sorted by domain
-  - run with '--jsonip' or '-ji' --> Outputs results as json sorted by ip
-  - run with '--jsonipinfo' or '-jii' --> Outputs results as json sorted by ip with additional information about the IP from ipinfo.io
-  - run with '--version6' or '-v6' --> Outputs IPV6 ips too, by default only IPV4 ips are outputted
-  - run with '--clipboard' or '-c' --> Will copy the resulting json to the clipboard for easy paste
-  - run with '--web' or '-w' --> Will make a HTML file with the results from --jsonipinfo. -jii must be used!
-  - run with '--nmap' or '-n' --> Will make a html file with -jii and -w and add ports from parsing a nmap XML scan file
-  - run with '--help' or '-h' --> shows standard help message
+### Option B — Virtual environment
 
-### Run:
-./d2i.py domainlist.txt # IPV4 only
-```
-======># Starting script #<=======
-Input file is --> domainlist.txt
-==================================
-* yourname.xyz * -->	104.24.123.106, 104.24.122.106
-* yourname.xyz * -->	104.24.123.106, 104.24.122.106
-* www.yourname.xyz * -->	104.24.122.106, 104.24.123.106
-* yourname.xyz * -->	104.24.123.106, 104.24.122.106
-* yourname.xyz * -->	104.24.123.106, 104.24.122.106
-* yourname.xyz * -->	104.24.123.106, 104.24.122.106
-* yourname.xyz * -->	104.24.123.106, 104.24.122.106
-IPV4: someinvaliddomain12312313.com Error: [Errno 8] nodename nor servname provided, or not known
-===========># Stats: #<===========
-The input file contained 9 lines and 2 domains/subdomains are unique. Difference: 7
-==================================
-```
-./d2i.py domainlist.txt -v6 # IPV4 and IPV6
-```
-======># Starting script #<=======
-Input file is --> domainlist.txt
-==================================
-* yourname.xyz * -->	104.24.123.106, 104.24.122.106
-* yourname.xyz * -->	2400:cb00:2048:1::6818:7a6a
-* yourname.xyz * -->	2400:cb00:2048:1::6818:7b6a
-* yourname.xyz * -->	104.24.123.106, 104.24.122.106
-* yourname.xyz * -->	2400:cb00:2048:1::6818:7a6a
-* yourname.xyz * -->	2400:cb00:2048:1::6818:7b6a
-* www.yourname.xyz * -->	104.24.122.106, 104.24.123.106
-* www.yourname.xyz * -->	2400:cb00:2048:1::6818:7b6a
-* www.yourname.xyz * -->	2400:cb00:2048:1::6818:7a6a
-* yourname.xyz * -->	104.24.123.106, 104.24.122.106
-* yourname.xyz * -->	2400:cb00:2048:1::6818:7a6a
-* yourname.xyz * -->	2400:cb00:2048:1::6818:7b6a
-* yourname.xyz * -->	104.24.123.106, 104.24.122.106
-* yourname.xyz * -->	2400:cb00:2048:1::6818:7a6a
-* yourname.xyz * -->	2400:cb00:2048:1::6818:7b6a
-* yourname.xyz * -->	104.24.123.106, 104.24.122.106
-* yourname.xyz * -->	2400:cb00:2048:1::6818:7a6a
-* yourname.xyz * -->	2400:cb00:2048:1::6818:7b6a
-* yourname.xyz * -->	104.24.123.106, 104.24.122.106
-* yourname.xyz * -->	2400:cb00:2048:1::6818:7a6a
-* yourname.xyz * -->	2400:cb00:2048:1::6818:7b6a
-IPV4: someinvaliddomain12312313.com Error: [Errno 8] nodename nor servname provided, or not known
-IPV6: someinvaliddomain12312313.com Error: [Errno 8] nodename nor servname provided, or not known
-===========># Stats: #<===========
-The input file contained 9 lines and 2 domains/subdomains are unique. Difference: 7
-==================================
-```
-./d2i.py domainlist.txt -ji # IPV4 with JSON sorted by IP
-```
-...
- ** Sorted IPv4 ips by domains as JSON **
+```bash
+# Create and activate a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate        # Linux / macOS
+# .venv\Scripts\activate         # Windows
 
-{
-    "104.24.122.106": [
-        "www.yourname.xyz",
-        "yourname.xyz"
-    ],
-    "104.24.123.106": [
-        "www.yourname.xyz",
-        "yourname.xyz"
-    ]
-}
+# Install dependencies
+pip install validators tldextract ipinfo requests
+
+# Run
+python d2i.py -f input.txt --ipinfo_token YOUR_TOKEN
 ```
 
-./domains2ips.py domainlist.txt -jd # IPV4 with JSON sorted by Domain
-```
-...
- ** Sorted Domains by IPv4 ips as JSON **
+---
 
-{
-    "www.yourname.xyz": [
-        "104.24.122.106",
-        "104.24.123.106"
-    ],
-    "yourname.xyz": [
-        "104.24.123.106",
-        "104.24.122.106"
-    ]
-}
+## IPinfo API Token
+
+The tool uses [IPinfo.io](https://ipinfo.io) to look up IPinfo Hostname, organisation, city, region, and country for each IP. A free account provides up to 50,000 requests/month.
+
+The token can be supplied in two ways:
+
+```bash
+# As a CLI argument
+python d2i.py -f input.txt --ipinfo_token YOUR_TOKEN
+
+# As an environment variable
+export IPINFO_TOKEN=YOUR_TOKEN
+python d2i.py -f input.txt
 ```
 
-./d2i.py domainlist.txt -ji -jd # IPV4 with JSON sorted by IP and Domain
-```
-...
- ** Sorted IPv4 ips with domains as JSON **
+If no token is provided, IP detail columns will be empty but the rest of the report will still generate.
 
-{"sorted by ip":
-{
-    "104.24.122.106": [
-        "www.yourname.xyz",
-        "yourname.xyz"
-    ],
-    "104.24.123.106": [
-        "www.yourname.xyz",
-        "yourname.xyz"
-    ]
-},"sorted by domain":
-{
-    "www.yourname.xyz": [
-        "104.24.122.106",
-        "104.24.123.106"
-    ],
-    "yourname.xyz": [
-        "104.24.123.106",
-        "104.24.122.106"
-    ]
-}
-}
-```
-./d2i.py -jii domainlist.txt
-```
-...
- ** Sorted IPs by domains and subdomains as JSON with additional information from ipinfo.io **
+---
 
-{
-    "104.24.116.11": [
-        {
-            "city": "New York City",
-            "country": "US",
-            "org": "AS13335 Cloudflare, Inc.",
-            "region": "New York"
-        },
-        [
-            "yourname.xyz",
-            "www.yourname.xyz"
-        ]
-    ],
-    "104.24.117.11": [
-        {
-            "city": "New York City",
-            "country": "US",
-            "org": "AS13335 Cloudflare, Inc.",
-            "region": "New York"
-        },
-        [
-            "yourname.xyz",
-            "www.yourname.xyz"
-        ]
-    ]
-}
-```
-./d2i.py -jii -w domainlist.txt
+## Input File Format
 
-Outputs results in a html file in the curent_folder/results/
+One entry per line. Supported formats:
+
+| Format | Example |
+|---|---|
+| Plain domain | `example.com` |
+| Subdomain | `sub.example.com` |
+| Full URL | `https://www.example.com/some/path` |
+| Raw IPv4 | `8.8.8.8` |
+| Raw IPv6 | `2606:4700:4700::1111` |
+| Comment | `# this line is ignored` |
+| Blank line | _(ignored)_ |
+
+See `test_input.txt` for a ready-to-use example:
+
+```
+# Test input file
+# Domains / subdomains
+example.com
+sub.example.com
+https://www.github.com/some/path
+
+# Raw IPs
+8.8.8.8
+1.1.1.1
+
+# IPv6
+2606:4700:4700::1111
+```
+
+---
+
+## Usage
+
+```
+python d2i.py -f INPUT_FILE [--ipinfo_token TOKEN] [-v6]
+```
+
+| Argument | Description |
+|---|---|
+| `-f`, `--file` | Path to the input file (required) |
+| `--ipinfo_token` | IPinfo.io API token (or set `IPINFO_TOKEN` env var) |
+| `-v6`, `--version6` | Also resolve IPv6 addresses |
+
+### Examples
+
+```bash
+# Basic run with the example file
+python d2i.py -f test_input.txt --ipinfo_token YOUR_TOKEN
+
+# Using uv, with IPv6 resolution enabled
+uv run --with validators --with tldextract --with ipinfo --with requests \
+    d2i.py -f test_input.txt --ipinfo_token YOUR_TOKEN -v6
+
+# Using an environment variable for the token
+export IPINFO_TOKEN=YOUR_TOKEN
+python d2i.py -f targets.txt
+
+# Pipe a quick list without a file (write to a temp file first)
+echo -e "example.com\n8.8.8.8" > /tmp/targets.txt
+python d2i.py -f /tmp/targets.txt --ipinfo_token YOUR_TOKEN
+
+# Open the report automatically after generation (macOS)
+python d2i.py -f targets.txt --ipinfo_token YOUR_TOKEN | xargs open
+
+# Open the report automatically after generation (Linux)
+python d2i.py -f targets.txt --ipinfo_token YOUR_TOKEN | xargs xdg-open
+```
+
+The report path is printed to `stdout` on completion (progress goes to `stderr`), making it easy to capture or pipe:
+
+```bash
+REPORT=$(python d2i.py -f targets.txt --ipinfo_token YOUR_TOKEN)
+echo "Report saved to: $REPORT"
+```
+
+---
+
+## Output
+
+Reports are saved to the `results/` directory (created automatically) with a timestamped filename:
+
+```
+results/report_2026-03-07_14-04-48.html
+```
+
+Open the file in any modern browser. No server or internet connection is needed to view the report.
+
+### Report tabs
+
+**By IP** — one row per unique IP address, columns:
+Label, IP, Reverse DNS, FQDNs, Ports, Tags, CPEs, Vulns (CVEs), Shodan Hostnames, IPinfo Hostname, Org, City, Region, Country, Notes
+
+**By FQDN** — one row per unique FQDN, columns:
+Label, FQDN, IPs, Reverse DNS, Shodan Hostnames, Ports, Vulns (CVEs), Org, Country, Notes
+
+### Severity labels
+
+Click the **Label** button on any row to cycle through severity states:
+
+| Label | Use for |
+|---|---|
+| — | Not yet triaged |
+| Critical | Confirmed high-priority finding |
+| Interesting | Worth investigating further |
+| Reviewed | Checked and understood |
+| False Positive | Can be ignored |
+
+Labels and notes are saved in the browser's `localStorage` and survive page refresh.
+
+---
+
+## Rate limiting
+
+Shodan InternetDB enforces approximately 1 request/second. The script automatically sleeps 1.1 seconds between Shodan queries. Private/reserved IPs and IPv6 addresses are skipped entirely (InternetDB only covers public IPv4), so only public IPv4 addresses count toward the delay. For large input files, expect roughly 1 second per unique public IPv4 address in enrichment time.
