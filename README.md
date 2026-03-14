@@ -2,7 +2,7 @@
 
 Accepts a mixed input file of domains, subdomains, URLs, and raw IPs. Resolves each to its IP address(es), enriches the results with geolocation and organisation data via [IPinfo.io](https://ipinfo.io) and open port/vulnerability data via [Shodan InternetDB](https://internetdb.shodan.io), then generates a self-contained HTML report.
 
-![Report screenshot](screenshot.png)
+![Report screenshot](d2i.png)
 
 ## Features
 
