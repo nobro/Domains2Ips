@@ -112,7 +112,7 @@ One entry per line. Supported formats:
 | Comment | `# this line is ignored` |
 | Blank line | _(ignored)_ |
 
-See `test_input.txt` for a ready-to-use example:
+See `domainlist.txt` for a ready-to-use example:
 
 ```
 # Test input file
