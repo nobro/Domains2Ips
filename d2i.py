@@ -22,6 +22,13 @@ import ipinfo
 import requests
 from time import sleep
 
+try:
+    import dns.resolver
+    import dns.exception
+    _DNS_AVAILABLE = True
+except ImportError:
+    _DNS_AVAILABLE = False
+
 
 # ---------------------------------------------------------------------------
 # Utilities
@@ -38,6 +45,7 @@ def _new_record(ip, fqdns=None):
     return {
         "ip": ip,
         "fqdns": list(fqdns) if fqdns else [],
+        "cname_chains": [],   # list of lists, parallel to fqdns; each sublist = full chain
         "reverse_dns": "N/A",
         "shodan_hostnames": [],
         "ports": [], "tags": [], "cpes": [], "vulns": [],
@@ -216,6 +224,58 @@ def resolve_domain(fqdn, include_v6):
     return sorted(set(ips))
 
 
+def resolve_cname_chain(fqdn):
+    """
+    Follows the full CNAME chain for fqdn using dnspython.
+    Returns a list [fqdn, cname1, ..., final_ip(s)] when CNAMEs are present,
+    or [] if the domain resolves directly (no CNAMEs) or dnspython is unavailable.
+    """
+    if not _DNS_AVAILABLE:
+        return []
+
+    chain = [fqdn]
+    current = fqdn
+
+    for _ in range(20):   # guard against CNAME loops
+        try:
+            answers = dns.resolver.resolve(current, 'CNAME', raise_on_no_answer=False)
+            if not answers or not answers.rrset:
+                break   # no more CNAMEs — end of chain
+            target = str(answers[0].target).rstrip('.')
+            if target == current:
+                break   # self-referential CNAME, stop
+            chain.append(target)
+            current = target
+        except dns.exception.Timeout:
+            log(f"    CNAME chain timeout at {current}")
+            break
+        except dns.resolver.NXDOMAIN:
+            log(f"    CNAME chain: NXDOMAIN for {current}")
+            break
+        except dns.resolver.NoNameservers:
+            log(f"    CNAME chain: no nameservers for {current}")
+            break
+        except dns.resolver.NoAnswer:
+            break   # suppressed by raise_on_no_answer=False but catch defensively
+        except Exception as e:
+            log(f"    CNAME chain unexpected error at {current}: {type(e).__name__}: {e}")
+            break
+
+    if len(chain) <= 1:
+        return []   # no CNAMEs — direct A record, nothing to display
+
+    # Append the final resolved IP(s)
+    try:
+        a_answers = dns.resolver.resolve(current, 'A', raise_on_no_answer=False)
+        if a_answers and a_answers.rrset:
+            for rdata in a_answers:
+                chain.append(str(rdata))
+    except Exception as e:
+        log(f"    CNAME chain: could not resolve final A record for {current}: {e}")
+
+    return chain
+
+
 def build_ip_records(parsed_entries, include_v6, ipinfo_token):
     """
     Processes all parsed entries and returns a list of enriched IP records.
@@ -243,12 +303,17 @@ def build_ip_records(parsed_entries, include_v6, ipinfo_token):
             if not resolved:
                 log(f"  No IPs resolved for {fqdn}")
                 continue
+            cname_chain = resolve_cname_chain(fqdn)
+            if cname_chain:
+                log(f"  CNAME chain: {' → '.join(cname_chain)}")
             for ip in resolved:
                 if ip not in seen_ips:
                     seen_ips[ip] = _new_record(ip, [fqdn])
+                    seen_ips[ip]["cname_chains"].append(cname_chain)
                 else:
                     if fqdn not in seen_ips[ip]["fqdns"]:
                         seen_ips[ip]["fqdns"].append(fqdn)
+                        seen_ips[ip]["cname_chains"].append(cname_chain)
 
     log(f"\nTotal unique IPs collected: {len(seen_ips)}")
 
@@ -276,8 +341,9 @@ def build_ip_records(parsed_entries, include_v6, ipinfo_token):
             })
             log(f"    Hostname='{record['hostname']}', Org='{record['org']}'")
         else:
-            record["ipinfo_error"] = ipinfo_data['Error']
-            log(f"    IPinfo Error: {ipinfo_data['Error']}")
+            err_msg = str(ipinfo_data.get('Error', 'Unknown error'))[:200]
+            record["ipinfo_error"] = err_msg
+            log(f"    IPinfo Error: {err_msg}")
 
         # Reverse DNS
         log(f"  Reverse DNS lookup...")
@@ -334,6 +400,7 @@ def build_fqdn_index(ip_records):
             if fqdn not in fqdn_map:
                 fqdn_map[fqdn] = {
                     "fqdn": fqdn,
+                    "cname_chain": [],
                     "ips": [],
                     "reverse_dns": [],
                     "shodan_hostnames": set(),
@@ -343,6 +410,11 @@ def build_fqdn_index(ip_records):
                     "countries": []
                 }
             entry = fqdn_map[fqdn]
+            # Populate cname_chain from the first record that has it
+            if not entry["cname_chain"] and fqdn in record["fqdns"]:
+                idx = record["fqdns"].index(fqdn)
+                if idx < len(record["cname_chains"]) and record["cname_chains"][idx]:
+                    entry["cname_chain"] = record["cname_chains"][idx]
             if record["ip"] not in entry["ips"]:
                 entry["ips"].append(record["ip"])
             if record["reverse_dns"] not in ("N/A", "") and record["reverse_dns"] not in entry["reverse_dns"]:
@@ -380,7 +452,8 @@ def compute_summary_stats(ip_records):
         "total_ips": len(ip_records),
         "total_fqdns": len(all_fqdns),
         "ips_with_cves": ips_with_cves,
-        "total_unique_cves": len(all_cves)
+        "total_unique_cves": len(all_cves),
+        "cname_enabled": _DNS_AVAILABLE
     }
 
 
@@ -389,8 +462,10 @@ def compute_summary_stats(ip_records):
 # ---------------------------------------------------------------------------
 
 def _safe_json(obj):
-    """Serializes to JSON and escapes </script> to prevent tag injection."""
-    return json.dumps(obj, ensure_ascii=False).replace('</script>', r'<\/script>')
+    """Serializes to JSON and escapes </script> and <!-- to prevent tag injection."""
+    return (json.dumps(obj, ensure_ascii=False)
+            .replace('</script>', r'<\/script>')
+            .replace('<!--', r'<\!--'))
 
 
 def generate_html_report(ip_records, fqdn_index, stats, output_dir="results"):
@@ -473,7 +548,7 @@ tr.has-cve>td:first-child{{background:rgba(231,76,60,.05)}}
 /* Badges */
 .badge{{display:inline-block;border-radius:3px;padding:1px 5px;margin:1px 1px;font-size:11px;line-height:1.4;font-weight:500}}
 .badge-default{{background:#e8f0fe;color:#1a56b0}}
-.badge-cve{{background:#fdecea;color:#c0392b}}
+.badge-cve{{background:#fdecea;color:#c0392b;text-decoration:none}}
 .badge-port{{background:#e6f9f0;color:#1a7a4a}}
 .badge-cpe{{background:#fdf6e3;color:#7a5f00}}
 .badge-tag{{background:#f0e8fe;color:#5b1ab0}}
@@ -520,6 +595,18 @@ tbody tr.row-sev-false-pos:nth-child(even){{background:rgba(189,195,199,.13)}}
 
 /* Hidden */
 tr.hidden{{display:none}}
+
+/* CNAME chain */
+.chain-line{{display:block;font-size:11px;line-height:1.6;white-space:nowrap;color:#1a1a2e;cursor:default}}
+.chain-line[title]{{cursor:help;border-bottom:1px dashed #aac}}
+.chain-line+.chain-line{{margin-top:3px}}
+.chain-arr{{color:#aaa;margin:0 3px;font-size:10px}}
+.chain-step{{color:#1a56b0}}
+.chain-step.chain-ip{{color:#1a7a4a;font-weight:500}}
+.chain-mid{{color:#999;font-style:italic;font-size:10px}}
+
+/* CNAME disabled warning */
+.cname-warn{{font-size:0.82rem;color:#b7770a;background:#fff8e1;border:1px solid #f5c842;border-radius:5px;padding:3px 10px;display:none}}
 </style>
 </head>
 <body>
@@ -529,6 +616,7 @@ tr.hidden{{display:none}}
   <p class="generated">Generated: {generation_time}</p>
   <div class="stats-bar">
     <div class="stat">Unique IPs: <strong id="s-ips">—</strong></div>
+    <div class="cname-warn" id="cname-warn">⚠ CNAME chains unavailable — rerun with <code>--with dnspython</code></div>
     <div class="stat">Unique FQDNs: <strong id="s-fqdns">—</strong></div>
     <div class="stat stat-cve">IPs with CVEs: <strong id="s-cve-ips">—</strong></div>
     <div class="stat stat-cve">Unique CVEs: <strong id="s-cves">—</strong></div>
@@ -564,6 +652,7 @@ tr.hidden{{display:none}}
           <th data-col="ip">IP<span class="sort-ind" id="si-by-ip-ip"></span></th>
           <th data-col="reverse_dns">Reverse DNS<span class="sort-ind" id="si-by-ip-reverse_dns"></span></th>
           <th data-col="fqdns">FQDNs<span class="sort-ind" id="si-by-ip-fqdns"></span></th>
+          <th data-col="cname_chains">CNAME Chain<span class="sort-ind" id="si-by-ip-cname_chains"></span></th>
           <th data-col="ports">Ports<span class="sort-ind" id="si-by-ip-ports"></span></th>
           <th data-col="tags">Tags<span class="sort-ind" id="si-by-ip-tags"></span></th>
           <th data-col="cpes">CPEs<span class="sort-ind" id="si-by-ip-cpes"></span></th>
@@ -581,6 +670,7 @@ tr.hidden{{display:none}}
           <td><input class="col-filter" data-tab="by-ip" data-col="ip" placeholder="filter…"></td>
           <td><input class="col-filter" data-tab="by-ip" data-col="reverse_dns" placeholder="filter…"></td>
           <td><input class="col-filter" data-tab="by-ip" data-col="fqdns" placeholder="filter…"></td>
+          <td><input class="col-filter" data-tab="by-ip" data-col="cname_chains" placeholder="filter…"></td>
           <td><input class="col-filter" data-tab="by-ip" data-col="ports" placeholder="filter…"></td>
           <td><input class="col-filter" data-tab="by-ip" data-col="tags" placeholder="filter…"></td>
           <td><input class="col-filter" data-tab="by-ip" data-col="cpes" placeholder="filter…"></td>
@@ -616,6 +706,7 @@ tr.hidden{{display:none}}
         <tr id="th-by-fqdn">
           <th class="sev-th">Label</th>
           <th data-col="fqdn">FQDN<span class="sort-ind" id="si-by-fqdn-fqdn"></span></th>
+          <th data-col="cname_chain">CNAME Chain<span class="sort-ind" id="si-by-fqdn-cname_chain"></span></th>
           <th data-col="ips">IPs<span class="sort-ind" id="si-by-fqdn-ips"></span></th>
           <th data-col="reverse_dns">Reverse DNS<span class="sort-ind" id="si-by-fqdn-reverse_dns"></span></th>
           <th data-col="shodan_hostnames">Shodan Hostnames<span class="sort-ind" id="si-by-fqdn-shodan_hostnames"></span></th>
@@ -628,6 +719,7 @@ tr.hidden{{display:none}}
         <tr class="filter-row" id="fr-by-fqdn">
           <td></td>
           <td><input class="col-filter" data-tab="by-fqdn" data-col="fqdn" placeholder="filter…"></td>
+          <td><input class="col-filter" data-tab="by-fqdn" data-col="cname_chain" placeholder="filter…"></td>
           <td><input class="col-filter" data-tab="by-fqdn" data-col="ips" placeholder="filter…"></td>
           <td><input class="col-filter" data-tab="by-fqdn" data-col="reverse_dns" placeholder="filter…"></td>
           <td><input class="col-filter" data-tab="by-fqdn" data-col="shodan_hostnames" placeholder="filter…"></td>
@@ -648,7 +740,7 @@ tr.hidden{{display:none}}
 const BY_IP_DATA = {by_ip_json};
 const BY_FQDN_DATA = {by_fqdn_json};
 const STATS = {stats_json};
-const REPORT_KEY = 'd2i_{generation_time}'.replace(/[\s:]/g, '_');
+const REPORT_KEY = 'd2i_{generation_time}'.replace(/[\\s:]/g, '_');
 var SEVERITIES = [
   {{ val: '',            label: '— Label',          cls: ''              }},
   {{ val: 'critical',    label: '🔴 Critical',       cls: 'sev-critical'   }},
@@ -684,8 +776,9 @@ var SEVERITIES = [
       {{ key: '__severity__',     type: 'severity' }},
       {{ key: 'ip',               type: 'text'     }},
       {{ key: 'reverse_dns',      type: 'text'     }},
-      {{ key: 'fqdns',            type: 'fqdn-arr' }},
-      {{ key: 'ports',            type: 'port'     }},
+      {{ key: 'fqdns',            type: 'fqdn-arr'     }},
+      {{ key: 'cname_chains',    type: 'cname-chains' }},
+      {{ key: 'ports',            type: 'port'         }},
       {{ key: 'tags',             type: 'tag'      }},
       {{ key: 'cpes',             type: 'cpe'      }},
       {{ key: 'vulns',            type: 'cve'      }},
@@ -699,8 +792,9 @@ var SEVERITIES = [
     ],
     'by-fqdn': [
       {{ key: '__severity__',     type: 'severity' }},
-      {{ key: 'fqdn',             type: 'text'    }},
-      {{ key: 'ips',              type: 'ip-arr'  }},
+      {{ key: 'fqdn',             type: 'text'       }},
+      {{ key: 'cname_chain',     type: 'cname-chain' }},
+      {{ key: 'ips',              type: 'ip-arr'     }},
       {{ key: 'reverse_dns',      type: 'arr'     }},
       {{ key: 'shodan_hostnames', type: 'arr'     }},
       {{ key: 'ports',            type: 'port'    }},
@@ -720,6 +814,36 @@ var SEVERITIES = [
       .replace(/"/g,'&quot;');
   }}
 
+  function isIpAddress(s) {{
+    return /^((25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)\\.){{3}}(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)$/.test(s) || /^[0-9a-fA-F:]+$/.test(s) && s.indexOf(':') !== -1;
+  }}
+
+  function chainStep(s) {{
+    return '<span class="chain-step' + (isIpAddress(s) ? ' chain-ip' : '') + '">' + escHtml(s) + '</span>';
+  }}
+  var ARROW = '<span class="chain-arr">→</span>';
+
+  function renderChain(steps) {{
+    var fullTitle = steps.join(' → ');
+    var inner;
+    if (steps.length <= 3) {{
+      // Short enough — show all steps inline, no tooltip needed
+      inner = steps.map(function(s, i) {{
+        return chainStep(s) + (i < steps.length - 1 ? ARROW : '');
+      }}).join('');
+      return '<span class="chain-line">' + inner + '</span>';
+    }} else {{
+      // Long chain — show first → …(N hops) → last, full chain in tooltip
+      var midCount = steps.length - 2;
+      inner = chainStep(steps[0])
+            + ARROW
+            + '<span class="chain-mid">…(' + midCount + ' hops)</span>'
+            + ARROW
+            + chainStep(steps[steps.length - 1]);
+      return '<span class="chain-line" title="' + escHtml(fullTitle) + '">' + inner + '</span>';
+    }}
+  }}
+
   function renderCell(value, type, record) {{
     // Special: Shodan error/no-info for ports/tags/cpes/vulns
     if ((type === 'port' || type === 'tag' || type === 'cpe' || type === 'cve') && record) {{
@@ -730,17 +854,6 @@ var SEVERITIES = [
         return '<span class="no-info">No data</span>';
       }}
     }}
-    if ((type === 'text') && record) {{
-      if (['hostname','org','city','region','country'].indexOf(type) !== -1 && record.ipinfo_error) {{
-        return '<span class="err">IPinfo error</span>';
-      }}
-    }}
-    // IPinfo fields
-    if (type === 'text' && record && record.ipinfo_error &&
-        ['hostname','org','city','region','country'].indexOf('__never__') === -1) {{
-      // handled below per key
-    }}
-
     // Clickable FQDN badges (IP view → FQDN tab)
     if (type === 'fqdn-arr') {{
       if (!Array.isArray(value) || value.length === 0) return '<span class="na">—</span>';
@@ -757,12 +870,30 @@ var SEVERITIES = [
       }}).join('');
     }}
 
+    // CNAME chain for by-FQDN view: flat list of steps
+    if (type === 'cname-chain') {{
+      if (!Array.isArray(value) || value.length === 0) return '<span class="na">—</span>';
+      return renderChain(value);
+    }}
+
+    // CNAME chains for by-IP view: list of lists (one per FQDN)
+    if (type === 'cname-chains') {{
+      if (!Array.isArray(value) || value.length === 0) return '<span class="na">—</span>';
+      var nonEmpty = value.filter(function(c) {{ return Array.isArray(c) && c.length > 0; }});
+      if (nonEmpty.length === 0) return '<span class="na">—</span>';
+      return nonEmpty.map(function(chain) {{ return renderChain(chain); }}).join('');
+    }}
+
     if (Array.isArray(value)) {{
       if (value.length === 0) return '<span class="na">—</span>';
-      var cls = type === 'cve' ? 'badge-cve' :
-                type === 'port' ? 'badge-port' :
-                type === 'cpe' ? 'badge-cpe' :
-                type === 'tag' ? 'badge-tag' : 'badge-default';
+      if (type === 'cve') {{
+        return value.map(function(v) {{
+          return '<a class="badge badge-cve" href="https://nvd.nist.gov/vuln/detail/' + encodeURIComponent(v) + '" target="_blank" rel="noopener">' + escHtml(v) + '</a>';
+        }}).join('');
+      }}
+      var cls = type === 'port' ? 'badge-port' :
+                type === 'cpe'  ? 'badge-cpe'  :
+                type === 'tag'  ? 'badge-tag'  : 'badge-default';
       return value.map(function(v) {{
         return '<span class="badge ' + cls + '">' + escHtml(v) + '</span>';
       }}).join('');
@@ -857,6 +988,7 @@ var SEVERITIES = [
       parts.push(record.ip || '');
       parts.push(record.reverse_dns || '');
       if (record.fqdns) parts.push(record.fqdns.join(' '));
+      if (record.cname_chains) record.cname_chains.forEach(function(c) {{ if (c) parts.push(c.join(' ')); }});
       parts.push(record.org || '');
       parts.push(record.hostname || '');
       parts.push(record.country || '');
@@ -867,6 +999,7 @@ var SEVERITIES = [
       if (record.shodan_hostnames) parts.push(record.shodan_hostnames.join(' '));
     }} else {{
       parts.push(record.fqdn || '');
+      if (record.cname_chain) parts.push(record.cname_chain.join(' '));
       if (record.ips) parts.push(record.ips.join(' '));
       if (record.reverse_dns) parts.push(record.reverse_dns.join(' '));
       if (record.shodan_hostnames) parts.push(record.shodan_hostnames.join(' '));
@@ -887,7 +1020,10 @@ var SEVERITIES = [
       return (state.notes[tabId + '_' + rowId] || '').toLowerCase();
     }}
     var v = record[col];
-    if (Array.isArray(v)) return v.join(' ').toLowerCase();
+    if (Array.isArray(v)) {{
+      // flatten one level for cname_chains (list of lists)
+      return v.map(function(c) {{ return Array.isArray(c) ? c.join(' ') : String(c); }}).join(' ').toLowerCase();
+    }}
     if (v === null || v === undefined) return '';
     return String(v).toLowerCase();
   }}
@@ -946,6 +1082,7 @@ var SEVERITIES = [
       }}
 
       item.tr.classList.toggle('hidden', !show);
+      item.tr.querySelectorAll('input, button').forEach(function(el) {{ el.tabIndex = show ? 0 : -1; }});
       if (show) visible++;
     }});
 
@@ -964,7 +1101,16 @@ var SEVERITIES = [
     cache.sort(function(a, b) {{
       var av = a.record[col];
       var bv = b.record[col];
-      // Arrays: sort by length for cves/ports, or join for text
+      // Array columns (ports, vulns, cpes, tags): sort by count; numeric arrays tiebreak by min value
+      if (Array.isArray(av) && Array.isArray(bv)) {{
+        var diff = (av.length - bv.length) * dir;
+        if (diff !== 0) return diff;
+        if (av.length > 0 && typeof av[0] === 'number') {{
+          return (Math.min.apply(null, av) - Math.min.apply(null, bv)) * dir;
+        }}
+        return 0;
+      }}
+      // Scalar columns: alphabetic
       if (Array.isArray(av)) av = av.join(' ');
       if (Array.isArray(bv)) bv = bv.join(' ');
       if (av === null || av === undefined || av === 'N/A') av = '';
@@ -1000,6 +1146,12 @@ var SEVERITIES = [
     applySort(tabId);
     applyFilters(tabId);
     updateSortIndicators(tabId);
+  }}
+
+  // ---- Debounce utility ----
+  function debounce(fn, ms) {{
+    var t;
+    return function() {{ var ctx = this, args = arguments; clearTimeout(t); t = setTimeout(function() {{ fn.apply(ctx, args); }}, ms); }};
   }}
 
   // ---- Cross-tab navigation ----
@@ -1038,6 +1190,9 @@ var SEVERITIES = [
     document.getElementById('s-fqdns').textContent = STATS.total_fqdns;
     document.getElementById('s-cve-ips').textContent = STATS.ips_with_cves;
     document.getElementById('s-cves').textContent = STATS.total_unique_cves;
+    if (!STATS.cname_enabled) {{
+      document.getElementById('cname-warn').style.display = 'block';
+    }}
 
     // Tab buttons
     document.querySelectorAll('.tab-btn').forEach(function(btn) {{
@@ -1070,11 +1225,12 @@ var SEVERITIES = [
       }});
     }});
 
-    // Global search
-    document.getElementById('search-input').addEventListener('input', function() {{
-      state.searchQuery = this.value;
+    // Global search (debounced — avoids lag on large datasets)
+    var searchEl = document.getElementById('search-input');
+    searchEl.addEventListener('input', debounce(function() {{
+      state.searchQuery = searchEl.value;
       applyFilters(state.activeTab);
-    }});
+    }}, 200));
     document.getElementById('search-clear').addEventListener('click', function() {{
       state.searchQuery = '';
       document.getElementById('search-input').value = '';
@@ -1100,6 +1256,27 @@ var SEVERITIES = [
       if (!link) return;
       navigateTo(link.dataset.navTab, link.dataset.navCol, link.dataset.navVal);
     }});
+
+    // Prune localStorage: keep at most 5 most-recent reports, remove the rest
+    try {{
+      var rkLen = REPORT_KEY.length;
+      var seen = {{}};
+      for (var _i = 0; _i < localStorage.length; _i++) {{
+        var _k = localStorage.key(_i);
+        if (_k && _k.length > rkLen && _k.substring(0, 4) === 'd2i_') {{
+          seen[_k.substring(0, rkLen)] = true;
+        }}
+      }}
+      var _old = Object.keys(seen).sort().reverse().slice(5);
+      if (_old.length) {{
+        var _drop = [];
+        for (var _j = 0; _j < localStorage.length; _j++) {{
+          var _k2 = localStorage.key(_j);
+          if (_k2 && _old.some(function(rk) {{ return _k2.indexOf(rk) === 0; }})) _drop.push(_k2);
+        }}
+        _drop.forEach(function(k) {{ localStorage.removeItem(k); }});
+      }}
+    }} catch(_e) {{}}
 
     // Load persisted labels + notes from localStorage
     ['by-ip', 'by-fqdn'].forEach(function(tabId) {{
@@ -1157,6 +1334,7 @@ def main():
     log(f"Input file : {args.file}")
     log(f"IPv6       : {'enabled' if args.version6 else 'disabled'}")
     log(f"IPinfo     : {'token provided' if args.ipinfo_token else 'NO TOKEN — IP details will be missing'}")
+    log(f"CNAME res  : {'enabled (dnspython)' if _DNS_AVAILABLE else 'DISABLED — install dnspython (add --with dnspython to uv run)'}")
     log('================================')
 
     # Read and parse input
